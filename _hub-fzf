@@ -1,0 +1,26 @@
+#compdef hfz msz hub-update
+# hub-fzf — zsh completion. oh-my-zsh picks this up automatically from the
+# plugin directory; manual installs: add the plugin dir to $fpath.
+
+case $service in
+  hfz|msz)
+    _arguments \
+      '--local[search only models already downloaded to the local cache]' \
+      '*::query:->query'
+    if [[ $state == query ]]; then
+      local src=hf
+      [[ $service == msz ]] && src=ms
+      local cache=${HUB_FZF_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/hub-fzf}/$src.tsv
+      if [[ -s $cache ]]; then
+        local -a models
+        models=(${(f)"$(cut -f1 "$cache" | head -n 200)"})
+        _describe -t models 'popular models' models
+      else
+        _message 'search query'
+      fi
+    fi
+    ;;
+  hub-update)
+    _arguments '1:source:(hf ms all)' '2:max models:'
+    ;;
+esac

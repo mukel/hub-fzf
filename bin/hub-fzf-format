@@ -1,0 +1,15 @@
+#!/usr/bin/env zsh
+# hub-fzf — reformat a raw "id<TAB>downloads<TAB>likes" stream into the
+# human-readable display TSV used by fzf. Numbers are right-padded so the
+# columns stay roughly aligned regardless of tab stops.
+
+awk -F'\t' '
+  function human(n) {
+    if (n >= 1e6) return sprintf("%.1fM", n / 1e6)
+    if (n >= 1e3) return sprintf("%.1fk", n / 1e3)
+    return sprintf("%d", n)
+  }
+  { printf "%s\t%8s ↓\t%8s ♥", $1, human($2), human($3)
+    if ($4 != "") printf "\t%s", $4
+    printf "\n" }
+'

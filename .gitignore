@@ -1,0 +1,6 @@
+# editor / OS cruft
+*.swp
+*~
+.DS_Store
+# stray atomic-write temp files (tmp + mv), if a script is killed mid-write
+*.tsv.[0-9]*

@@ -1,0 +1,43 @@
+#!/usr/bin/env zsh
+# hub-fzf — list a repo's available GGUF quants, for the quant picker and
+# the preview pane. Usage: hub-fzf-quants <hf|ms> <id>
+# Output: lib/quants.jq rows (label, size, shards, file, include-pattern).
+# Empty output = no .gguf files. The file listing is cached per repo.
+
+set -u
+
+HUB_FZF_PLUGIN_DIR=${0:A:h:h}
+source "$HUB_FZF_PLUGIN_DIR/lib/common.zsh"
+
+source=${1:-hf}
+id=${2:-}
+id=${id%% *}   # pickers pad the id column for alignment — strip it
+[[ -z $id ]] && exit 0
+
+cache_dir="$HUB_FZF_CACHE_DIR/tree"
+cache_file="$cache_dir/$(_hub_fzf_cache_key "$source $id").json"
+
+# normalized listing: [{path, size}]
+if _hub_fzf_cache_fresh "$cache_file" $(_hub_fzf_duration_seconds $HUB_FZF_PREVIEW_TTL); then
+  files=$(<"$cache_file")
+else
+  case $source in
+    hf)
+      auth=()
+      [[ -n ${HF_TOKEN:-} ]] && auth=(-H "Authorization: Bearer $HF_TOKEN")
+      files=$(curl -sfS "${auth[@]}" "https://huggingface.co/api/models/$id/tree/main?recursive=true" \
+        | jq -c '[.[] | select(.type == "file") | {path, size}]') || exit 1
+      ;;
+    ms)
+      files=$(curl -sfS "https://modelscope.cn/api/v1/models/$id/repo/files?Recursive=true" \
+        | jq -c '[.Data.Files[]? | select(.Type == "blob") | {path: .Path, size: .Size}]') || exit 1
+      ;;
+    *) exit 0 ;;
+  esac
+  [[ $files == \[* ]] || exit 1   # never cache failures
+  mkdir -p "$cache_dir"
+  print -r -- "$files" > "$cache_file.$$"
+  mv -f "$cache_file.$$" "$cache_file"
+fi
+
+jq -r -f "$HUB_FZF_PLUGIN_DIR/lib/quants.jq" <<< "$files"

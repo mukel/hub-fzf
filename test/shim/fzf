@@ -1,0 +1,36 @@
+#!/usr/bin/env zsh
+# hub-fzf — scripted stand-in for fzf, so the smoke test can drive the
+# pickers without a TTY. Each call consumes one line of $FAKE_FZF_SCRIPT:
+#   <key>|<regex>   → print query/key per --print-query/--expect, then the
+#                     input lines matching <regex> (all of them with --multi,
+#                     else the first); key "esc" exits 130 like a cancel.
+# Every call's argv is appended to $FAKE_FZF_SCRIPT.log.
+
+[[ ${1-} == --version ]] && { print '0.99.0 (shim)'; exit 0 }
+
+integer n=$(( $(cat "$FAKE_FZF_SCRIPT.n" 2>/dev/null || print 0) + 1 ))
+print $n > "$FAKE_FZF_SCRIPT.n"
+print -r -- "${(j: :)${(q)@}}" >> "$FAKE_FZF_SCRIPT.log"
+step=$(sed -n "${n}p" "$FAKE_FZF_SCRIPT")
+key=${step%%|*} re=${step#*|}
+
+query= pq=0 ex=0 multi=0
+for a; do
+  case $a in
+    --query=*)     query=${a#--query=} ;;
+    --print-query) pq=1 ;;
+    --expect=*)    ex=1 ;;
+    --multi)       multi=1 ;;
+  esac
+done
+[[ $key == esc ]] && exit 130
+
+input=$(sed 's/\x1b\[[0-9;]*m//g')   # like --ansi
+(( pq )) && print -r -- "$query"
+(( ex )) && print -r -- "$key"
+if (( multi )); then
+  print -r -- "$input" | grep -E -- "$re"
+else
+  print -r -- "$input" | grep -E -m1 -- "$re"
+fi
+exit 0

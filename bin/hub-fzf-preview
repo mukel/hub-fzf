@@ -1,0 +1,132 @@
+#!/usr/bin/env zsh
+# hub-fzf — fzf preview: available quants first, then repo metadata. Cached
+# for HUB_FZF_PREVIEW_TTL so toggling the preview pane doesn't refetch.
+# Usage: hub-fzf-preview <hf|ms> <id> [mode: index|local]
+# Local mode inspects the on-disk copy instead (no network).
+
+set -u
+
+HUB_FZF_PLUGIN_DIR=${0:A:h:h}
+source "$HUB_FZF_PLUGIN_DIR/lib/common.zsh"
+
+source=${1:-hf}
+id=${2:-}
+id=${id%% *}   # pickers pad the id column for alignment — strip it
+mode=${3:-index}
+[[ -z $id ]] && exit 0
+
+# quants.jq rows → aligned "label  size  shards" lines
+quant_table() {
+  awk -F'\t' '{ printf "  %-14s %8s  %s\n", $1, $2, $3 }'
+}
+
+cache_dir="$HUB_FZF_CACHE_DIR/preview"
+
+# --- local mode: inspect the on-disk cache, no network -----------------------
+
+if [[ $mode == local ]]; then
+  dir=$(_hub_fzf_local_dir $source "$id") || exit 0
+
+  cache_file="$cache_dir/$(_hub_fzf_cache_key "local $source $id").txt"
+  if _hub_fzf_cache_fresh "$cache_file" 3600; then
+    cat "$cache_file"
+    exit 0
+  fi
+
+  zmodload -F zsh/stat b:zstat
+  size=$(du -sh "$dir" 2>/dev/null | cut -f1)
+  snap=( "$dir"/snapshots/*(N-/) "$dir"(N-/) )   # hf layout; ms: files at top
+  files=$(find -L "$snap[1]" -type f 2>/dev/null | wc -l)
+  modified=$(zstat +mtime "$dir" 2>/dev/null)
+
+  # downloaded quants: the same grouping as the hub listing
+  rows=()
+  for f in "$snap[1]"/**/*.gguf(N-.); do
+    rows+=("${f#$snap[1]/}"$'\t'"$(zstat -L +size -- "${f:A}" 2>/dev/null || print 0)")
+  done
+  quants=$(print -rl -- $rows \
+    | jq -R -s -c '[split("\n")[] | select(length > 0) | split("\t") | {path: .[0], size: (.[1] | tonumber)}]' \
+    | jq -r -f "$HUB_FZF_PLUGIN_DIR/lib/quants.jq" | quant_table)
+
+  result="id:       $id
+path:     $dir
+size:     ${size:-?}
+files:    $files
+snapshot: ${${snap[1]:t}}
+modified: $(date -d "@${modified:-0}" '+%Y-%m-%d %H:%M' 2>/dev/null)"
+  [[ -n $quants ]] && result+=$'\n\n'"quants on disk:"$'\n'"$quants"
+
+  print -r -- "$result"
+  mkdir -p "$cache_dir"
+  print -r -- "$result" > "$cache_file.$$"
+  mv -f "$cache_file.$$" "$cache_file"
+  exit 0
+fi
+
+# --- index mode: quants + hub metadata ---------------------------------------
+
+cache_file="$cache_dir/$(_hub_fzf_cache_key "$source $id").txt"
+if _hub_fzf_cache_fresh "$cache_file" $(_hub_fzf_duration_seconds $HUB_FZF_PREVIEW_TTL); then
+  cat "$cache_file"
+  exit 0
+fi
+
+auth=()
+[[ -n ${HF_TOKEN:-} ]] && auth=(-H "Authorization: Bearer $HF_TOKEN")
+
+case $source in
+  hf)
+    meta=$(curl -sfS "${auth[@]}" "https://huggingface.co/api/models/$id" | jq -r '
+      def human: if . >= 1e6 then "\((./1e5|round)/10)M"
+                 elif . >= 1e3 then "\((./1e2|round)/10)k"
+                 else tostring end;
+      "id:        \(.id)",
+      "author:    \(.author // "-")",
+      "pipeline:  \(.pipeline_tag // "-")",
+      "base:      \([.tags[]? | select(startswith("base_model:") and (contains(":quantized:") | not))
+                      | sub("^base_model:(finetune:|adapter:|merge:)?"; "")] | first // "-")",
+      "downloads: \((.downloads // 0) | human)",
+      "likes:     \((.likes // 0) | human)",
+      "modified:  \(.lastModified // "-" | .[:10])"
+    ' 2>/dev/null)
+    ;;
+
+  ms)
+    meta=$(curl -sfS "https://modelscope.cn/api/v1/models/$id" | jq -r '
+      def human: if . >= 1e6 then "\((./1e5|round)/10)M"
+                 elif . >= 1e3 then "\((./1e2|round)/10)k"
+                 else tostring end;
+      .Data |
+      "id:        \(.Path // "-")/\(.Name)",
+      "downloads: \((.Downloads // 0) | human)",
+      "stars:     \((.Stars // 0) | human)",
+      "license:   \(.License // "-")",
+      "created:   \((.CreatedTime // 0) | if . > 0 then strftime("%Y-%m-%d") else "-" end)",
+      "tasks:     \(.Tasks // [] | map(.Name // .) | join(", ") | if . == "" then "-" else . end)"
+    ' 2>/dev/null)
+    ;;
+
+  *) exit 0 ;;
+esac
+
+quants=$("$HUB_FZF_PLUGIN_DIR/bin/hub-fzf-quants" $source "$id" 2>/dev/null)
+quants_ok=$?
+
+result=
+if [[ -n $quants ]]; then
+  result="quants (enter to pick):"$'\n'"$(quant_table <<< "$quants")"
+elif (( quants_ok == 0 )); then
+  result="no .gguf files — enter seeds a whole-repo download"
+fi
+[[ -n $result && -n $meta ]] && result+=$'\n\n'
+[[ -n $meta ]] && result+=$meta
+
+[[ -n $result ]] || exit 0   # preview failures are cosmetic — stay silent
+print -r -- "$result"
+
+# only cache complete previews — never pin an API failure for a day
+if [[ -n $meta ]] && (( quants_ok == 0 )); then
+  mkdir -p "$cache_dir"
+  print -r -- "$result" > "$cache_file.$$"
+  mv -f "$cache_file.$$" "$cache_file"
+fi

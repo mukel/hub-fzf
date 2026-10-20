@@ -1,0 +1,29 @@
+#!/usr/bin/env zsh
+# hub-fzf — delete a locally cached model, with interactive confirmation.
+# Bound to ctrl-d in --local mode via fzf's execute (gets the real TTY).
+# Usage: hub-fzf-delete <hf|ms> <id>
+
+set -u
+
+HUB_FZF_PLUGIN_DIR=${0:A:h:h}
+source "$HUB_FZF_PLUGIN_DIR/lib/common.zsh"
+
+source=${1:-hf}
+id=${2:-}
+id=${id%% *}   # local list pads the id column for alignment — strip it
+[[ -z $id ]] && exit 1
+
+dir=$(_hub_fzf_local_dir $source "$id")
+[[ -n $dir ]] || { print -u2 "not found locally: $id"; exit 1; }
+
+size=$(du -sh "$dir" 2>/dev/null | cut -f1)
+read "reply?delete $id (${size:-?}) — type y to confirm: "
+if [[ $reply == [yY]* ]]; then
+  rm -rf -- "$dir"
+  print "deleted: $id"
+  # drop its stale preview-cache entry
+  rm -f "$HUB_FZF_CACHE_DIR/preview/$(_hub_fzf_cache_key "local $source $id").txt"(N) 2>/dev/null
+else
+  print "aborted"
+  exit 1
+fi
