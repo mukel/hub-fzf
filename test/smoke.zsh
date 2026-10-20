@@ -69,9 +69,6 @@ else
 fi
 
 print "== display =="
-check "GGUF badge column" zsh -c '
-  print "x/y\t2500000\t42\tGGUF" | "$1" | grep -q "GGUF$"
-' _ "$PLUGIN_DIR/bin/hub-fzf-format"
 check "pretty: dim counters + badge highlight" zsh -c '
   esc=$(printf "\033")
   out=$(print "a/b\t1.0k ↓\t42 ♥\tGGUF" | "$1/bin/hub-fzf-pretty")
@@ -84,10 +81,11 @@ check "pretty: id column aligned" zsh -c '
   l2=$(print -r -- "$clean" | sed -n 2p | cut -f1)
   [[ ${#l1} -eq ${#l2} && ${#l1} -eq 12 ]]
 ' _ "$PLUGIN_DIR"
-check "pretty: local badge is green" zsh -c '
-  esc=$(printf "\033")
-  out=$(print "a/b\t4.0G\t2026-08-01\tlocal" | "$1/bin/hub-fzf-pretty")
-  [[ $out == *${esc}"[32mlocal"* ]]
+check "pretty: id padding capped at 50" zsh -c '
+  long=org/${(l:60::x:)}
+  clean=$(print "s/a\t1 ↓\t1 ♥\n$long\t2 ↓\t3 ♥" | NO_COLOR=1 "$1/bin/hub-fzf-pretty")
+  l1=$(print -r -- "$clean" | sed -n 1p | cut -f1)
+  [[ ${#l1} -eq 50 ]]
 ' _ "$PLUGIN_DIR"
 check "pretty: NO_COLOR disables colors" zsh -c '
   esc=$(printf "\033")
@@ -164,7 +162,7 @@ check "local preview (hf)" zsh -c '
 ' _ "$HUB_FZF_CACHE_DIR" "$PLUGIN_DIR"
 check "local list size column" zsh -c '
   HF_HUB_CACHE="$1/fake-hf" HUB_FZF_CACHE_DIR="$1" "$2/bin/hub-fzf-local" hf \
-    | awk -F"\t" "NF != 4 || \$2 !~ /^ *[0-9]/ { bad=1 } END { exit bad+0 }"
+    | awk -F"\t" "NF != 3 || \$2 !~ /^ *[0-9]/ { bad=1 } END { exit bad+0 }"
 ' _ "$HUB_FZF_CACHE_DIR" "$PLUGIN_DIR"
 check "local list (ms, both layouts)" zsh -c '
   fake="$1/fake-ms"
@@ -274,10 +272,10 @@ check "ctrl-l switches index → local (query kept)" zsh -c '
   [[ $1 == "local acme/thing-GGUF" ]] && grep -c "query=gemma" "$2" | grep -qx 2
 ' _ "$out" "$HUB_FZF_CACHE_DIR/shim-toggle/script.log"
 out=$(shimrun quant $'|unsloth/gemma-3-1b-it-GGUF\n|^Q4_K_M\t' \
-  '_hub_fzf_select hf unsloth/gemma-3-1b index && _hub_fzf_seed_download hf $HUB_FZF_ID "hf download" && print -r -- $HUB_FZF_SEED')
+  '_hub_fzf_select hf unsloth/gemma-3-1b index && _hub_fzf_seed_download hf $HUB_FZF_ID && print -r -- $HUB_FZF_SEED')
 check "enter → quant picker → --include" test "$out" = "hf download unsloth/gemma-3-1b-it-GGUF --include gemma-3-1b-it-Q4_K_M.gguf"
 out=$(shimrun quant-esc $'|unsloth/gemma-3-1b-it-GGUF\nesc|' \
-  '_hub_fzf_select hf unsloth/gemma-3-1b index && _hub_fzf_seed_download hf $HUB_FZF_ID "hf download" && print -r -- $HUB_FZF_SEED')
+  '_hub_fzf_select hf unsloth/gemma-3-1b index && _hub_fzf_seed_download hf $HUB_FZF_ID && print -r -- $HUB_FZF_SEED')
 check "esc in quant picker → whole repo" test "$out" = "hf download unsloth/gemma-3-1b-it-GGUF"
 out=$(shimrun esc 'esc|' '_hub_fzf_select hf x index; print rc=$?')
 check "esc in main picker cancels" test "$out" = "rc=1"

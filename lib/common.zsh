@@ -119,8 +119,6 @@ _hub_fzf_duration_seconds() {
   esac
 }
 
-_hub_fzf_ttl_seconds() { _hub_fzf_duration_seconds $HUB_FZF_TTL }
-
 # is $1 a file modified within the last $2 seconds?
 _hub_fzf_cache_fresh() {
   [[ -f $1 ]] || return 1
@@ -219,9 +217,7 @@ _hub_fzf_select() {
     local line=${lines[3]-}
     [[ -n $line ]] || return 1
 
-    typeset -g HUB_FZF_KEY HUB_FZF_MODE=$mode
-    HUB_FZF_ID=${line%%$'\t'*}
-    typeset -g HUB_FZF_ID=${HUB_FZF_ID%% *}   # strip id-column padding
+    HUB_FZF_MODE=$mode HUB_FZF_ID=${${line%%$'\t'*}%% *}   # strip id padding
     return 0
   done
 }
@@ -277,14 +273,11 @@ _hub_fzf_quant_pick() {
 # Never network-gated and never aborted: esc, an empty selection or an
 # unreachable API all fall back to the plain whole-repo command. Always
 # returns 0 with HUB_FZF_SEED set.
-_hub_fzf_seed_download() {
-  local source=$1 id=$2 cmd=$3
+_hub_fzf_seed_download() {  # <hf|ms> <id>
+  local source=$1 id=$2 cmd=$HUB_FZF_DOWNLOAD_CMD
+  [[ $source == ms ]] && cmd=$HUB_FZF_MS_DOWNLOAD_CMD
   _hub_fzf_quant_pick $source "$id" "$cmd" || typeset -g HUB_FZF_SEED="$cmd $id"
   return 0
-}
-
-_hub_fzf_download_cmd() {  # <hf|ms>
-  [[ $1 == ms ]] && print -r -- "$HUB_FZF_MS_DOWNLOAD_CMD" || print -r -- "$HUB_FZF_DOWNLOAD_CMD"
 }
 
 # usage: _hub_fzf_pick <hf|ms> [--local] [query words...]
@@ -317,8 +310,7 @@ _hub_fzf_pick() {
     return
   fi
 
-  _hub_fzf_seed_download $source "$HUB_FZF_ID" "$(_hub_fzf_download_cmd $source)" &&
-    print -z -- "$HUB_FZF_SEED"
+  _hub_fzf_seed_download $source "$HUB_FZF_ID" && print -z -- "$HUB_FZF_SEED"
 }
 
 # --- ZLE widgets (hotkeys) -------------------------------------------------------
@@ -342,7 +334,7 @@ _hub_fzf_widget() {
         BUFFER="$HUB_FZF_ID"
         CURSOR=$#BUFFER
       else
-        _hub_fzf_seed_download $source "$HUB_FZF_ID" "$(_hub_fzf_download_cmd $source)"
+        _hub_fzf_seed_download $source "$HUB_FZF_ID"
         BUFFER="$HUB_FZF_SEED"
         CURSOR=$#BUFFER
       fi

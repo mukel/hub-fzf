@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
-# hub-fzf — pretty-print the display TSV: pad the id column so the counters
-# line up, dim the counters, highlight the badge (GGUF yellow — only with
-# HUB_FZF_GGUF_ONLY=0 — local green).
+# hub-fzf — pretty-print the display TSV: pad the id column (capped at 50
+# chars, so one very long id in a 100k-row index doesn't push every row's
+# counters off-screen) so the counters line up, dim the counters, highlight the GGUF badge (HUB_FZF_GGUF_ONLY=0).
 # Display-time only: the index on disk stays plain unpadded TSV, and
 # fzf --ansi strips the codes again for matching and output. Colors honor
 # HUB_FZF_COLOR=0 / NO_COLOR. Reads stdin, writes stdout.
@@ -9,22 +9,24 @@
 awk -F'\t' '
   BEGIN {
     color = (ENVIRON["HUB_FZF_COLOR"] != "0" && ENVIRON["NO_COLOR"] == "")
-    if (color) { dim = "\033[2m"; yel = "\033[1;33m"; grn = "\033[32m"; rst = "\033[0m" }
+    if (color) { dim = "\033[2m"; yel = "\033[1;33m"; rst = "\033[0m" }
   }
   {
     rows[NR] = $0
     ids[NR] = $1
     if (length($1) > max) max = length($1)
+    if (max > 50) max = 50
   }
   END {
     for (i = 1; i <= NR; i++) {
       n = split(rows[i], f, "\t")
-      out = ids[i] sprintf("%*s", max - length(ids[i]), "")
+      pad = max - length(ids[i])
+      out = ids[i] sprintf("%*s", pad > 0 ? pad : 0, "")
       for (j = 2; j <= n; j++) {
         fld = f[j]
         if (color) {
           if (j == 2 || j == 3) fld = dim fld rst
-          else if (j == 4 && fld != "") fld = (fld == "local" ? grn : yel) fld rst
+          else if (j == 4 && fld != "") fld = yel fld rst
         }
         out = out "\t" fld
       }

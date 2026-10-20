@@ -16,17 +16,18 @@ zmodload zsh/datetime
 
 source=${1:-hf}
 
-# collect id<TAB>dir pairs first so the id column can be padded to the
-# longest id — bare tabs land on 8-column stops and the columns end up
-# ragged when id lengths vary
-typeset -a pairs
+# id <TAB> size <TAB> date; the pickers pad the id column (hub-fzf-pretty)
+row() {  # <id> <dir>
+  printf '%s\t%8s\t%s\n' "$1" "$(du -sh -- "$2" 2>/dev/null | cut -f1)" \
+    "$(strftime '%Y-%m-%d' $(zstat +mtime -- "$2" 2>/dev/null || print 0))"
+}
 
 case $source in
   hf)
     hub=${HF_HUB_CACHE:-${HF_HOME:-$HOME/.cache/huggingface}/hub}
     for d in "$hub"/models--*--*(N-/om); do
       id=${${d:t}#models--}
-      pairs+=("${id//--//}"$'\t'"$d")
+      row "${id//--//}" "$d"
     done
     ;;
 
@@ -38,20 +39,8 @@ case $source in
       rel=${rel#models/}
       [[ -n ${seen[$rel]-} || $rel != */* ]] && continue
       seen[$rel]=1
-      pairs+=("$rel"$'\t'"$d")
+      row "$rel" "$d"
     done
     ;;
 esac
 
-integer max=1
-for p in $pairs; do
-  (( ${#${p%%$'\t'*}} > max )) && max=${#${p%%$'\t'*}}
-done
-
-for p in $pairs; do
-  id=${p%%$'\t'*}
-  d=${p#*$'\t'}
-  printf '%s%*s\t%8s\t%s\tlocal\n' "$id" $(( max - ${#id} )) '' \
-    "$(du -sh -- "$d" 2>/dev/null | cut -f1)" \
-    "$(strftime '%Y-%m-%d' $(zstat +mtime -- "$d" 2>/dev/null || print 0))"
-done

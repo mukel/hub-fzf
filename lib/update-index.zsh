@@ -135,13 +135,20 @@ case $source in
 esac
 print >&2
 
-if (( max > 0 )); then
-  LC_ALL=C sort -t $'\t' -k2,2nr "$raw" | head -n "$max" \
-    | "$HUB_FZF_PLUGIN_DIR/bin/hub-fzf-format" > "$out"
-else
-  LC_ALL=C sort -t $'\t' -k2,2nr "$raw" \
-    | "$HUB_FZF_PLUGIN_DIR/bin/hub-fzf-format" > "$out"
-fi
+# sort by downloads, keep the top $max, humanize the counters (right-padded
+# so the columns line up regardless of tab stops)
+limit=(cat)
+(( max > 0 )) && limit=(head -n $max)
+LC_ALL=C sort -t $'\t' -k2,2nr "$raw" | $limit | awk -F'\t' '
+  function human(n) {
+    if (n >= 1e6) return sprintf("%.1fM", n / 1e6)
+    if (n >= 1e3) return sprintf("%.1fk", n / 1e3)
+    return sprintf("%d", n)
+  }
+  { printf "%s\t%8s ↓\t%8s ♥", $1, human($2), human($3)
+    if ($4 != "") printf "\t%s", $4
+    printf "\n" }
+' > "$out"
 mv -f "$out" "$HUB_FZF_CACHE_DIR/$source.tsv"
 date +%s > "$HUB_FZF_CACHE_DIR/$source.stamp"
 print -r -- "$scope" > "$HUB_FZF_CACHE_DIR/$source.scope"
@@ -153,8 +160,6 @@ rm -rf "$HUB_FZF_CACHE_DIR"/live(N/) 2>/dev/null
 rm -f "$HUB_FZF_CACHE_DIR"/preview/*(Nms+$(_hub_fzf_duration_seconds $HUB_FZF_PREVIEW_TTL)) \
       "$HUB_FZF_CACHE_DIR"/tree/*(Nms+$(_hub_fzf_duration_seconds $HUB_FZF_PREVIEW_TTL)) 2>/dev/null
 
-if (( max > 0 )); then
-  print "update-index: $source index ready ($count $kind, top $max kept)"
-else
-  print "update-index: $source index ready ($count $kind, full catalog)"
-fi
+kept="top $max kept"
+(( max )) || kept="full catalog"
+print "update-index: $source index ready ($count $kind, $kept)"

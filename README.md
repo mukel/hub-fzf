@@ -87,7 +87,7 @@ cached for `HUB_FZF_PREVIEW_TTL`. Want the preview always open? Drop
 | `ctrl-/` | toggle preview (quants + metadata)  | toggle preview (path, size, quants)  |
 
 The prompt shows the mode — `hf›` or `hf local›`. Columns are aligned and
-colorized (counters dimmed, `local` badge green); `HUB_FZF_COLOR=0` or
+colorized (counters dimmed); `HUB_FZF_COLOR=0` or
 `NO_COLOR=1` disables colors.
 
 ### Hotkeys
@@ -170,7 +170,6 @@ lib/quants.jq          groups a repo's .gguf files into quants (shards merged)
 bin/hub-fzf-quants      a repo's quants (hf tree / ms file API), cached per repo
 bin/hub-fzf-local       lists on-disk cached models, newest first
 bin/hub-fzf-delete      removes a cached model, with confirmation (ctrl-d)
-bin/hub-fzf-format      raw id/↓/♥ → aligned display columns
 bin/hub-fzf-pretty      pads the id column + ANSI colors (display-time only)
 bin/hub-fzf-preview     preview pane: quants + metadata (or on-disk details)
 ```

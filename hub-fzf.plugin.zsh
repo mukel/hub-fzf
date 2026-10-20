@@ -57,11 +57,11 @@ _hub_fzf_init() {
   (( $+commands[flock] && $+commands[jq] && $+commands[curl] )) || return 0
 
   mkdir -p "$HUB_FZF_CACHE_DIR"
-  local ttl=$(_hub_fzf_ttl_seconds) now=$(date +%s)
+  local ttl=$(_hub_fzf_duration_seconds $HUB_FZF_TTL) now=$(date +%s)
   local s stamp stale=()
   for s in hf ms; do
-    # ms is opt-in: only auto-refresh once its index exists (don't force a
-    # 10-minute ModelScope crawl on users who never asked for it)
+    # ms is opt-in: only auto-refresh once its index exists (don't crawl
+    # ModelScope for users who never asked for it)
     [[ $s == ms && ! -f $(_hub_fzf_cache_file ms) ]] && continue
     stamp="$HUB_FZF_CACHE_DIR/$s.stamp"
     # fresh only if within the TTL *and* crawled with the current scope —

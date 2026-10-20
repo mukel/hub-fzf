@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 # hub-fzf — delete a locally cached model, with interactive confirmation.
-# Bound to ctrl-d in --local mode via fzf's execute (gets the real TTY).
+# Bound to ctrl-d in the local picker via fzf's execute (gets the real TTY).
 # Usage: hub-fzf-delete <hf|ms> <id>
 
 set -u
@@ -21,8 +21,6 @@ read "reply?delete $id (${size:-?}) — type y to confirm: "
 if [[ $reply == [yY]* ]]; then
   rm -rf -- "$dir"
   print "deleted: $id"
-  # drop its stale preview-cache entry
-  rm -f "$HUB_FZF_CACHE_DIR/preview/$(_hub_fzf_cache_key "local $source $id").txt"(N) 2>/dev/null
 else
   print "aborted"
   exit 1

@@ -2,7 +2,7 @@
 # hub-fzf — fzf preview: available quants first, then repo metadata. Cached
 # for HUB_FZF_PREVIEW_TTL so toggling the preview pane doesn't refetch.
 # Usage: hub-fzf-preview <hf|ms> <id> [mode: index|local]
-# Local mode inspects the on-disk copy instead (no network).
+# Local mode inspects the on-disk copy instead (no network, not cached).
 
 set -u
 
@@ -21,17 +21,14 @@ quant_table() {
 }
 
 cache_dir="$HUB_FZF_CACHE_DIR/preview"
+human='def human: if . >= 1e6 then "\((./1e5|round)/10)M"
+                  elif . >= 1e3 then "\((./1e2|round)/10)k"
+                  else tostring end;'
 
 # --- local mode: inspect the on-disk cache, no network -----------------------
 
 if [[ $mode == local ]]; then
   dir=$(_hub_fzf_local_dir $source "$id") || exit 0
-
-  cache_file="$cache_dir/$(_hub_fzf_cache_key "local $source $id").txt"
-  if _hub_fzf_cache_fresh "$cache_file" 3600; then
-    cat "$cache_file"
-    exit 0
-  fi
 
   zmodload -F zsh/stat b:zstat
   size=$(du -sh "$dir" 2>/dev/null | cut -f1)
@@ -48,18 +45,13 @@ if [[ $mode == local ]]; then
     | jq -R -s -c '[split("\n")[] | select(length > 0) | split("\t") | {path: .[0], size: (.[1] | tonumber)}]' \
     | jq -r -f "$HUB_FZF_PLUGIN_DIR/lib/quants.jq" | quant_table)
 
-  result="id:       $id
+  print -r -- "id:       $id
 path:     $dir
 size:     ${size:-?}
 files:    $files
 snapshot: ${${snap[1]:t}}
 modified: $(date -d "@${modified:-0}" '+%Y-%m-%d %H:%M' 2>/dev/null)"
-  [[ -n $quants ]] && result+=$'\n\n'"quants on disk:"$'\n'"$quants"
-
-  print -r -- "$result"
-  mkdir -p "$cache_dir"
-  print -r -- "$result" > "$cache_file.$$"
-  mv -f "$cache_file.$$" "$cache_file"
+  [[ -n $quants ]] && print -r -- $'\n'"quants on disk:"$'\n'"$quants"
   exit 0
 fi
 
@@ -76,10 +68,7 @@ auth=()
 
 case $source in
   hf)
-    meta=$(curl -sfS "${auth[@]}" "https://huggingface.co/api/models/$id" | jq -r '
-      def human: if . >= 1e6 then "\((./1e5|round)/10)M"
-                 elif . >= 1e3 then "\((./1e2|round)/10)k"
-                 else tostring end;
+    meta=$(curl -sfS "${auth[@]}" "https://huggingface.co/api/models/$id" | jq -r "$human"'
       "id:        \(.id)",
       "author:    \(.author // "-")",
       "pipeline:  \(.pipeline_tag // "-")",
@@ -92,10 +81,7 @@ case $source in
     ;;
 
   ms)
-    meta=$(curl -sfS "https://modelscope.cn/api/v1/models/$id" | jq -r '
-      def human: if . >= 1e6 then "\((./1e5|round)/10)M"
-                 elif . >= 1e3 then "\((./1e2|round)/10)k"
-                 else tostring end;
+    meta=$(curl -sfS "https://modelscope.cn/api/v1/models/$id" | jq -r "$human"'
       .Data |
       "id:        \(.Path // "-")/\(.Name)",
       "downloads: \((.Downloads // 0) | human)",
